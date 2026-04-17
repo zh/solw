@@ -1,0 +1,22 @@
+# Rust build artifacts
+/target
+debug/
+vendor/
+**/*.rs.bk
+*.pdb
+PRD.md
+research.md
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+.claude/
