@@ -10,6 +10,7 @@ mod storage;
 mod tx;
 mod util;
 mod wallet;
+mod x402;
 
 #[derive(Parser)]
 #[command(name = "solw", version, about = "solw -- Solana CLI wallet")]
@@ -100,6 +101,23 @@ enum Commands {
     Airdrop {
         /// Amount in SOL (default 1.0, max 2.0)
         amount: Option<f64>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Pay an x402-protected HTTP endpoint with USDC (devnet today)
+    Pay {
+        /// Resource URL (server replies 402 with a payment quote)
+        url: String,
+        /// Maximum price in UI units (USDC)
+        #[arg(long = "max-price", default_value_t = cli::pay::DEFAULT_MAX_PRICE_UI)]
+        max_price: f64,
+        /// Fetch the 402 quote, print it, and exit without signing or paying
+        #[arg(long)]
+        inspect: bool,
+        /// Skip interactive confirmation prompt
+        #[arg(long)]
+        confirmed: bool,
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -277,6 +295,16 @@ async fn run() -> Result<()> {
         },
         Commands::Airdrop { amount, json } => {
             cli::airdrop::run(wallet_name, cli_network, amount, json).await?
+        }
+        Commands::Pay { url, max_price, inspect, confirmed, json } => {
+            let params = cli::pay::PayParams {
+                url: &url,
+                max_price_ui: max_price,
+                inspect,
+                confirmed,
+                json_out: json,
+            };
+            cli::pay::run(wallet_name, cli_network, params).await?
         }
         Commands::Swap { command } => match command {
             SwapCommand::Quote { input, output, amount, raw, slippage_bps, json } => {

@@ -1,6 +1,6 @@
 # solw
 
-Agent-friendly Solana CLI wallet: SOL / SPL / NFT transfers, Jupiter swaps, Metaplex metadata — JSON output, no `solana-sdk`.
+Agent-friendly Solana CLI wallet: SOL / SPL / NFT transfers, Jupiter swaps, Metaplex metadata, x402 HTTP-402 pay — JSON output, no `solana-sdk`.
 
 ```bash
 $ solw balance
@@ -15,6 +15,9 @@ $ solw swap quote SOL USDC 0.01
   route:    Raydium > Orca
 
 $ solw swap execute SOL USDC 0.01 --confirmed --json
+
+$ solw pay http://localhost:3001/premium --inspect           # dry-run: fetch quote, build unsigned tx, exit
+$ solw pay http://localhost:3001/premium --confirmed --json  # fetch, sign, submit, print premium payload
 ```
 
 ## Highlights
@@ -22,6 +25,7 @@ $ solw swap execute SOL USDC 0.01 --confirmed --json
 - **Multi-wallet** — create, import, and switch between named wallets with BIP39 seed phrases (SLIP-0010 derivation `m/44'/501'/0'/0'`, compatible with Phantom / Solflare).
 - **SOL / SPL tokens / NFTs** — send with UI-unit amounts, auto-create recipient ATAs, decode Metaplex name + symbol.
 - **Jupiter swaps** — quote (safe, no wallet needed) and execute (mainnet-only) via `lite-api.jup.ag/swap/v1`.
+- **x402 HTTP-402 pay** — `solw pay <URL>` fetches a USDC quote from any x402-speaking server, verifies the recipient ATA is canonical, enforces a spend cap, signs locally, re-submits with `X-Payment`, and surfaces the paid response. `--inspect` prints the quote + unsigned tx without signing.
 - **Devnet / testnet airdrop** — request faucet SOL straight from the CLI.
 - **Networks** — mainnet, devnet, testnet; network stored per wallet, overridable per-call with `--network`.
 - **Custom RPCs** — per-network env-var overrides (Alchemy, Helius, QuickNode, …).
@@ -72,10 +76,11 @@ A ready-to-install agent skill lives at [`skills/solw/SKILL.md`](skills/solw/SKI
 ## Security
 
 - Seed phrases are stored plaintext with `0600` perms at `~/.solw/wallets/<name>` (override with `SOLW_HOME`). Same model as the Solana CLI's file-system wallets.
-- All value-moving commands (`send`, `send-all`, `token send`, `nft send`, `swap execute`) require interactive confirmation unless `--confirmed` is passed.
+- All value-moving commands (`send`, `send-all`, `token send`, `nft send`, `swap execute`, `pay`) require interactive confirmation unless `--confirmed` is passed.
 - `swap execute` is hard-restricted to mainnet — Jupiter only routes mainnet liquidity.
 - All built-in cluster endpoints are HTTPS-only.
 - Swap transactions returned by Jupiter are verified locally (single required signer = the user's pubkey, transfers touch both input and output mints, not a versioned-v0 transaction) before being signed and submitted.
+- `solw pay` never trusts the x402 server's advertised token account: the destination ATA is re-derived from `(recipientWallet, mint)` and a mismatch aborts before signing. A raw-unit `--max-price` cap (default `0.01` USDC) and a cluster-vs-wallet-network check run before any RPC lookup.
 
 ## Storage Layout
 

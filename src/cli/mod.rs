@@ -3,6 +3,7 @@ pub mod balance;
 pub mod common;
 pub mod history;
 pub mod nft;
+pub mod pay;
 pub mod receive;
 pub mod send;
 pub mod swap;

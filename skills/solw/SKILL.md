@@ -1,11 +1,11 @@
 ---
 name: solw
-description: Solana CLI wallet for balance queries, SOL/SPL/NFT transfers, Jupiter swaps, and devnet airdrops. Use when interacting with the Solana blockchain or swapping tokens on Solana.
+description: Solana CLI wallet for balance queries, SOL/SPL/NFT transfers, Jupiter swaps, devnet airdrops, and paying x402 HTTP 402 endpoints with USDC. Use when interacting with the Solana blockchain, swapping tokens on Solana, or paying an x402-protected HTTP URL.
 ---
 
 # solw — Solana CLI Wallet
 
-Rust CLI wallet for Solana. Supports multi-wallet key management, SOL / SPL token / NFT transfers, Metaplex metadata reads, Jupiter swaps (mainnet-only), and devnet/testnet faucet airdrops. Hand-rolled transaction builder — no `solana-sdk` dependency.
+Rust CLI wallet for Solana. Supports multi-wallet key management, SOL / SPL token / NFT transfers, Metaplex metadata reads, Jupiter swaps (mainnet-only), devnet/testnet faucet airdrops, and x402 HTTP 402 micropayments. Hand-rolled transaction builder — no `solana-sdk` dependency.
 
 ## Commands
 
@@ -131,6 +131,36 @@ solw history --json
 solw history --limit 50 --json
 ```
 
+### x402 HTTP 402 Payments
+
+```bash
+# Fetch the quote, show it, and build the unsigned tx — NO signing, NO funds move
+solw pay <url> --inspect --json
+
+# Sign + submit + retry with X-Payment header (requires --confirmed or interactive approval)
+solw pay <url> --confirmed --json
+
+# Cap the price (UI units; default 0.01)
+solw pay <url> --max-price 0.001 --confirmed --json
+```
+
+`solw pay <URL>` implements the x402 "exact" scheme on Solana: GET the URL, expect a 402 with a `payment` quote, pay with USDC on-chain, then re-GET with an `X-Payment` header carrying the base64-encoded signed transaction. The server verifies the transfer and returns the premium content (HTTP 200 with `data` + `paymentDetails`).
+
+Options:
+
+- `--max-price <ui>` — reject the quote if it exceeds this UI-unit amount (default **0.01** USDC).
+- `--inspect` — fetch the quote, build the unsigned tx, print everything, and exit **without signing or submitting**.
+- `--confirmed` — skip the interactive confirm prompt (standard solw contract; only after explicit user approval).
+- `--json` — machine-readable output (success envelope or error envelope).
+
+Exit codes:
+
+- `0` — payment accepted, content returned.
+- `1` — pre-submit error (quote rejected, insufficient balance, cluster mismatch, `--max-price` exceeded, malformed 402 body).
+- `2` — transaction submitted but server returned 402 on retry (on-chain failure or verification rejected).
+
+Today verified against Woody's reference Solana x402 server (devnet USDC). Canonical x402-svm spec compatibility (VersionedTransaction v0, facilitator settlement) is a future stage.
+
 ## Decision Flow
 
 When an agent needs to interact with Solana:
@@ -152,7 +182,13 @@ When an agent needs to interact with Solana:
          / `solw token send <mint> <recipient> <amount> --confirmed --json`
          / `solw nft send <mint> <recipient> --confirmed --json`
 
-4. **Devnet airdrop**:
+4. **x402 paid HTTP request**:
+   - First: `solw pay <url> --inspect --json` to fetch + display the quote without paying
+   - Show the user the amount, recipient, and network
+   - **Wait for explicit user approval**
+   - Then: `solw pay <url> --confirmed --json` (honors the `--max-price` cap)
+
+5. **Devnet airdrop**:
    - Safe on devnet/testnet; refused on mainnet (no faucet exists)
    - No user approval needed — no real funds at stake
 
@@ -164,6 +200,7 @@ When an agent needs to interact with Solana:
 - `solw token send`
 - `solw nft send`
 - `solw swap execute`
+- `solw pay` (without `--inspect`)
 
 Always:
 1. Show the user what will happen (amount, recipient, network, swap details)
@@ -175,6 +212,7 @@ Safe commands that need no approval:
 - `solw token list`, `solw token info`
 - `solw nft list`, `solw nft info`
 - `solw swap quote`
+- `solw pay --inspect` (quote only, no signing)
 - `solw airdrop` (devnet / testnet only)
 - `solw wallet list`, `solw wallet info`
 

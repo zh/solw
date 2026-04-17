@@ -11,6 +11,12 @@ pub fn lamports_to_sol(lamports: u64) -> f64 {
     lamports as f64 / LAMPORTS_PER_SOL as f64
 }
 
+/// Convert raw base units to a UI `f64` amount for a given mint's decimals.
+/// Display-only — use integer comparisons for any value checks.
+pub fn raw_to_ui(amount_raw: u64, decimals: u8) -> f64 {
+    amount_raw as f64 / 10f64.powi(decimals as i32)
+}
+
 /// Convert a UI-unit SOL amount to lamports with the same rejection rules as
 /// `ui_to_raw(amount, 9)` — just specialized so callers don't have to pass 9
 /// at every site.

@@ -10,6 +10,7 @@ CLI wallet for Solana. Local key storage, SPL tokens, NFTs, Jupiter swap.
 - **SPL tokens** — list, info, send; associated token accounts auto-created for recipients
 - **NFTs (Metaplex)** — list, info (name, symbol, metadata PDA), send
 - **Jupiter swap** — `quote` (safe) and `execute` (mainnet-only) via https://lite-api.jup.ag/swap/v1
+- **x402 HTTP 402 pay** — pay a USDC-priced API endpoint; `--inspect` for a dry-run preview
 - **Devnet / testnet airdrop** — request faucet SOL (capped at 2 SOL per call)
 - **Transaction history** — recent signatures with block time and error status
 - **Mainnet / devnet / testnet** — network auto-detected per wallet
@@ -295,13 +296,77 @@ solw -n mainnet swap execute SOL USDC 0.002   # 0.002 SOL → USDC
 
 Any other string is treated as a literal base58 mint address.
 
+## x402 HTTP 402 Pay
+
+`solw pay` is a client for the x402 HTTP 402 "Payment Required" protocol: the server answers `402` with a USDC payment quote, the client pays on-chain, then replays the request with an `X-Payment` header carrying proof of payment.
+
+```bash
+# Inspect-only: GET the URL, print the quote + the unsigned transaction, exit
+solw pay <url> --inspect
+solw pay <url> --inspect --json
+
+# Pay (interactive confirm unless --confirmed or --json)
+solw pay <url>
+solw pay <url> --confirmed
+solw pay <url> --confirmed --json
+
+# Cap the spend (UI units; default 0.01)
+solw pay <url> --max-price 0.005 --confirmed
+```
+
+Flow:
+
+1. `GET <url>` — expect `402 Payment Required` with a body like:
+   ```json
+   {
+     "payment": {
+       "recipientWallet": "...",
+       "tokenAccount": "...",
+       "mint": "...",
+       "amount": 100,
+       "amountUSDC": 0.0001,
+       "cluster": "devnet",
+       "message": "..."
+     }
+   }
+   ```
+2. Guardrails (all pre-sign):
+   - reject if quote cluster does not match the wallet's network,
+   - reject if `amount > --max-price` (converted to UI units via the mint's decimals),
+   - reject if the wallet's SPL balance for that mint is insufficient.
+3. Build a legacy Solana transaction with a plain SPL `Transfer` (discriminator 3) — and an idempotent `CreateAssociatedTokenAccountIdempotent` preamble when the recipient ATA doesn't exist yet.
+4. Interactive confirm prompt (`--confirmed` or `--json` skips).
+5. Sign locally, base64-encode the signed tx, build the `X-Payment` header:
+   ```json
+   {
+     "x402Version": 1,
+     "scheme": "exact",
+     "network": "solana-devnet" | "solana-mainnet",
+     "payload": { "serializedTransaction": "<base64-signed-tx>" }
+   }
+   ```
+   The JSON is then base64-encoded again for the header value. Header name is literally `X-Payment` (mixed-case).
+6. `GET <url>` with `X-Payment: <header>`. Server verifies the transfer and returns `200` + `{ data, paymentDetails: { signature, amount, amountUSDC, recipient, explorerUrl } }`, or `402` again if the payment was rejected.
+
+Exit codes:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Payment accepted, premium content returned |
+| `1` | Pre-submit error (quote exceeded `--max-price`, cluster mismatch, insufficient balance, malformed 402 body, user aborted) |
+| `2` | Transaction submitted but server returned 402 on retry (on-chain failure or verification rejected); the tx signature, if present, is surfaced |
+
+Stage 7a targets Woody's reference Solana x402 server (devnet USDC, simplified dialect: legacy transaction, plain `Transfer`, client as fee payer, server verifies + submits directly). The canonical x402-svm spec (VersionedTransaction v0, `TransferChecked`, facilitator settlement, partial signing) is scoped for a future stage.
+
 ## Global Options
 
 | Option | Applies to | Description |
 |--------|------------|-------------|
 | `-n, --name <wallet>` | all commands | Select wallet (falls back to default) |
 | `--network <net>` | all commands | Override stored network: `mainnet`, `devnet`, `testnet` |
-| `--confirmed` | `send`, `send-all`, `token send`, `nft send`, `swap execute` | Skip the interactive confirmation prompt |
+| `--confirmed` | `send`, `send-all`, `token send`, `nft send`, `swap execute`, `pay` | Skip the interactive confirmation prompt |
+| `--max-price <ui>` | `pay` | x402 quote cap in UI units (default 0.01) |
+| `--inspect` | `pay` | Fetch + display the quote and unsigned tx; do not sign or submit |
 | `--json` | most commands | Machine-readable JSON output |
 
 ## Storage

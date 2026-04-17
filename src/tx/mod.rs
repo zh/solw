@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use ed25519_dalek::{Signer, SigningKey};
 
 pub mod token;
+pub mod x402;
 
 pub const SYSTEM_PROGRAM_ID: [u8; 32] = [0u8; 32];
 
